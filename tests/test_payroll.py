@@ -88,6 +88,31 @@ def test_monthly_payroll_and_attendance_bonus(client, manager_headers):
     assert data["summary"]["bonus_recipients"] == 1
 
 
+def test_employee_can_only_view_their_own_payroll(client, employee_headers):
+    employee_id = seed_payroll_period()
+
+    response = client.get(
+        "/api/v1/me/payroll",
+        params={"year": 2024, "month": 1, "employee_id": employee_id + 1},
+        headers=employee_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["year"] == 2024
+    assert data["month"] == 1
+    assert data["item"]["employee_code"] == "NV001"
+    assert data["item"]["base_earned"] == 20_000_000
+    assert data["item"]["total_salary"] == 21_000_000
+
+    management_endpoint = client.get(
+        "/api/v1/payroll",
+        params={"year": 2024, "employee_id": employee_id},
+        headers=employee_headers,
+    )
+    assert management_endpoint.status_code == 403
+
+
 def test_manager_can_update_salary_only_in_department(client, manager_headers):
     employee_id = seed_payroll_period()
     updated = client.put(

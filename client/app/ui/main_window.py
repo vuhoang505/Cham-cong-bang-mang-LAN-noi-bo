@@ -351,8 +351,11 @@ class MainWindow(
         if name == "Trung tâm điều hành":
             self.build_admin_dashboard(layout)
             return self.vertical_page_scroller(page)
-        if name == "Lương & chuyên cần":
-            self.build_payroll_page(layout)
+        if name in ("Bảng lương của tôi", "Lương & chuyên cần"):
+            if self.employee_portal:
+                self.build_personal_payroll_page(layout)
+            else:
+                self.build_payroll_page(layout)
             return self.vertical_page_scroller(page)
         if name == "Tổng quan":
             self.metrics, grid = {}, QGridLayout()

@@ -48,6 +48,8 @@ cd ..
   ```powershell
   .\.venv\Scripts\python.exe client_launcher.py
   ```
+  Nhân viên có thể xem lịch sử chấm công cá nhân tại **Lịch sử** và bảng lương của mình theo
+  tháng/năm tại **Bảng lương của tôi**.
 - **Giao diện Quản trị / Quản lý ca (Attendance Admin)**:
   ```powershell
   .\.venv\Scripts\python.exe admin_launcher.py

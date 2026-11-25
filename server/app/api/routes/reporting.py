@@ -156,6 +156,38 @@ def payroll_summary(
     return report
 
 
+@admin_router.get("/api/v1/me/payroll")
+def personal_payroll(
+    year: int,
+    db: Db,
+    user: CurrentUser,
+    month: int | None = Query(default=None, ge=1, le=12),
+):
+    employee = ensure_employee(user)
+    try:
+        report = payroll_report(
+            db,
+            year=year,
+            month=month,
+            employee_id=employee.id,
+        )
+    except ValueError as exc:
+        logger.warning("Invalid personal payroll report parameters: %s", exc)
+        detail = str(exc)
+        if "năm trong tương lai" in detail:
+            message = "Không thể xem lương của năm trong tương lai."
+        elif "tháng trong tương lai" in detail:
+            message = "Không thể xem lương của tháng trong tương lai."
+        else:
+            message = "Kỳ lương không hợp lệ."
+        raise HTTPException(400, message) from None
+    return {
+        "year": year,
+        "month": month,
+        "item": report["items"][0] if report["items"] else None,
+    }
+
+
 @admin_router.put("/api/v1/payroll/profiles/{employee_id}")
 def update_payroll_profile(
     employee_id: int,

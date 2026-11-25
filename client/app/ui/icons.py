@@ -1,5 +1,5 @@
-from PySide6.QtCore import QSize
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QPushButton,
@@ -7,6 +7,27 @@ from PySide6.QtWidgets import (
     QStyle,
     QWidget,
 )
+
+
+def calendar_icon(color: str) -> QIcon:
+    pixmap = QPixmap(24, 24)
+    pixmap.fill(Qt.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.Antialiasing)
+    accent = QColor(color)
+    painter.setPen(QPen(accent, 1.8))
+    painter.setBrush(Qt.NoBrush)
+    painter.drawRoundedRect(QRectF(3.5, 5.5, 17, 15), 2, 2)
+    painter.drawLine(QPointF(4, 9.5), QPointF(20, 9.5))
+    painter.drawLine(QPointF(8, 3.5), QPointF(8, 7))
+    painter.drawLine(QPointF(16, 3.5), QPointF(16, 7))
+    painter.setPen(Qt.NoPen)
+    painter.setBrush(accent)
+    for x in (8, 12, 16):
+        for y in (13, 17):
+            painter.drawEllipse(QPointF(x, y), 0.8, 0.8)
+    painter.end()
+    return QIcon(pixmap)
 
 
 def clean_button_text(text: str) -> str:
@@ -68,6 +89,8 @@ def action_icon(widget: QWidget, text: str, *, navigation: bool = False):
         icon = standard.SP_FileDialogNewFolder
     elif "yêu cầu điều chỉnh" in value:
         icon = standard.SP_FileDialogContentsView
+    elif "xem bảng lương" in value:
+        icon = standard.SP_FileDialogDetailedView
     elif "đánh dấu" in value:
         icon = standard.SP_DialogYesButton
     elif any(word in value for word in ("duyệt", "xác nhận", "đăng nhập")):

@@ -5,7 +5,7 @@ import pytest
 from app.api.common import attendance_dict
 from app.core.config import get_settings
 from app.database.session import SessionLocal
-from app.models.entities import AttendanceStatus, Employee, Shift, ShiftAssignment
+from app.models.entities import AttendanceRecord, AttendanceStatus, Employee, Shift, ShiftAssignment
 from app.services.attendance import check_in, check_out
 from fastapi import HTTPException
 
@@ -115,6 +115,47 @@ def test_attendance_rejects_missing_device_fingerprint(client, employee_headers)
         headers=employee_headers,
     )
     assert response.status_code == 422
+
+
+def test_employee_attendance_history_is_limited_to_their_own_records(
+    client, employee_headers
+):
+    work_date = date(2026, 11, 20)
+    with SessionLocal.begin() as db:
+        employee = db.query(Employee).filter_by(employee_code="NV001").one()
+        manager_employee = db.query(Employee).filter_by(employee_code="MG001").one()
+        shift = db.query(Shift).filter_by(code="HC").one()
+        db.add_all(
+            [
+                AttendanceRecord(
+                    employee_id=employee.id,
+                    shift_id=shift.id,
+                    work_date=work_date,
+                    check_in_at=datetime(2026, 11, 20, 1, tzinfo=UTC),
+                    check_in_ip="127.0.0.1",
+                ),
+                AttendanceRecord(
+                    employee_id=manager_employee.id,
+                    shift_id=shift.id,
+                    work_date=work_date,
+                    check_in_at=datetime(2026, 11, 20, 1, tzinfo=UTC),
+                    check_in_ip="127.0.0.1",
+                ),
+            ]
+        )
+        employee_id = employee.id
+        other_employee_id = manager_employee.id
+
+    response = client.get(
+        "/api/v1/attendance",
+        params={"mine": True, "employee_id": other_employee_id},
+        headers=employee_headers,
+    )
+
+    assert response.status_code == 200, response.text
+    rows = response.json()
+    assert len(rows) == 1
+    assert rows[0]["employee_id"] == employee_id
 
 
 def test_attendance_allows_lan_ip_fallback(

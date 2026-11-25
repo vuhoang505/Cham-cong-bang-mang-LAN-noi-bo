@@ -1,5 +1,5 @@
 from PySide6.QtCharts import QBarCategoryAxis, QBarSeries, QBarSet, QChart, QChartView, QValueAxis
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (
     QComboBox,
@@ -19,10 +19,153 @@ from app.network.api import ApiError
 from app.timezone import local_now
 from app.ui.catalog import COLUMN_LABELS, TABLE_COLUMNS
 from app.ui.dialogs import Field
+from app.ui.icons import calendar_icon
 
 
 class PayrollUiMixin:
     """Payroll dashboard, charts and profile actions for Admin/Manager."""
+
+    def build_personal_payroll_page(self, layout):
+        toolbar = QFrame(objectName="payrollToolbar")
+        toolbar_box = QHBoxLayout(toolbar)
+        toolbar_box.setContentsMargins(14, 11, 14, 11)
+        toolbar_box.setSpacing(8)
+        self.add_shadow(toolbar, blur=18, y_offset=4, alpha=22)
+
+        current_year = local_now().year
+        period_icon = calendar_icon("#4F46E5")
+        self.personal_payroll_year = QComboBox()
+        self.personal_payroll_year.setProperty("payrollPeriodSelector", True)
+        self.personal_payroll_year.setIconSize(QSize(18, 18))
+        self.personal_payroll_year.setToolTip("Chọn năm cần xem lương")
+        for year in range(current_year, current_year - 6, -1):
+            self.personal_payroll_year.addItem(period_icon, f"Năm {year}", year)
+        toolbar_box.addWidget(self.personal_payroll_year)
+
+        self.personal_payroll_month = QComboBox()
+        self.personal_payroll_month.setProperty("payrollPeriodSelector", True)
+        self.personal_payroll_month.setIconSize(QSize(18, 18))
+        self.personal_payroll_month.setToolTip("Chọn tháng hoặc xem tổng cả năm")
+        self.personal_payroll_month.addItem(period_icon, "Cả năm", None)
+        for month in range(1, 13):
+            self.personal_payroll_month.addItem(
+                period_icon, f"Tháng {month:02d}", month
+            )
+        toolbar_box.addWidget(self.personal_payroll_month)
+
+        apply_button = QPushButton("Xem bảng lương")
+        apply_button.clicked.connect(self.load_personal_payroll)
+        self.personal_payroll_apply_button = apply_button
+        toolbar_box.addWidget(apply_button)
+        refresh_button = QPushButton("↻ Làm mới")
+        refresh_button.setProperty("secondary", True)
+        refresh_button.clicked.connect(self.load_personal_payroll)
+        self.personal_payroll_refresh_button = refresh_button
+        toolbar_box.addWidget(refresh_button)
+        toolbar_box.addStretch()
+        layout.addWidget(self.toolbar_scroller(toolbar, height=70))
+
+        summary = QFrame(objectName="payrollMetricCard")
+        summary.setProperty("tone", "teal")
+        summary_box = QVBoxLayout(summary)
+        summary_box.setContentsMargins(17, 13, 17, 13)
+        summary_box.addWidget(QLabel("Tổng thực nhận", objectName="payrollMetricLabel"))
+        self.personal_payroll_total = QLabel("—", objectName="payrollMetricValue")
+        summary_box.addWidget(self.personal_payroll_total)
+        layout.addWidget(summary)
+        self.add_shadow(summary, blur=18, y_offset=4, alpha=24)
+
+        self.personal_payroll_status = QLabel(
+            "Chọn kỳ lương để xem chi tiết của bạn.", objectName="subtitle"
+        )
+        self.personal_payroll_status.setWordWrap(True)
+        layout.addWidget(self.personal_payroll_status)
+
+        table = QTableWidget()
+        table.setProperty("page_name", "Bảng lương của tôi")
+        self.configure_table(table)
+        table.setMinimumHeight(190)
+        self.personal_payroll_table = table
+        self.table_rows[table] = []
+        layout.addWidget(table, 1)
+
+        QTimer.singleShot(120, self.load_personal_payroll)
+
+    def load_personal_payroll(self):
+        params = {
+            "year": self.personal_payroll_year.currentData(),
+        }
+        month = self.personal_payroll_month.currentData()
+        if month is not None:
+            params["month"] = month
+        try:
+            data = self.api.request("GET", "/api/v1/me/payroll", params=params)
+        except ApiError as exc:
+            QMessageBox.warning(self, "Không tải được bảng lương", str(exc))
+            return
+        if not isinstance(data, dict) or (
+            data.get("item") is not None and not isinstance(data["item"], dict)
+        ):
+            QMessageBox.warning(
+                self,
+                "Không tải được bảng lương",
+                "Dữ liệu bảng lương không hợp lệ. Vui lòng thử lại.",
+            )
+            return
+        item = data.get("item")
+        rows = [item] if item else []
+        self.table_rows[self.personal_payroll_table] = rows
+        self.render_personal_payroll_table(rows)
+        period = (
+            f"tháng {data['month']:02d}/{data['year']}"
+            if data.get("month")
+            else f"năm {data.get('year')}"
+        )
+        if item:
+            self.personal_payroll_total.setText(
+                self.format_money(item.get("total_salary", 0))
+            )
+            self.personal_payroll_status.setText(f"Bảng lương cá nhân — {period}.")
+        else:
+            self.personal_payroll_total.setText("0 ₫")
+            self.personal_payroll_status.setText(
+                f"Chưa có dữ liệu lương cho {period}."
+            )
+
+    def render_personal_payroll_table(self, rows):
+        columns = TABLE_COLUMNS["Bảng lương của tôi"]
+        table = self.personal_payroll_table
+        table.setSortingEnabled(False)
+        table.clearContents()
+        table.setColumnCount(len(columns))
+        table.setHorizontalHeaderLabels([COLUMN_LABELS.get(key, key) for key in columns])
+        table.setRowCount(len(rows))
+        money_columns = {"base_earned", "bonus_earned", "overtime_earned", "total_salary"}
+        for row_index, row in enumerate(rows):
+            for column_index, key in enumerate(columns):
+                value = row.get(key, "")
+                if key in money_columns:
+                    text = self.format_money(value)
+                elif key == "bonus_status":
+                    text = self.format_cell(value)
+                elif key in ("worked_hours", "approved_overtime_hours"):
+                    text = f"{float(value or 0):.2f}"
+                else:
+                    text = self.format_cell(value)
+                item = QTableWidgetItem(text)
+                item.setData(Qt.UserRole, row)
+                item.setToolTip(text)
+                if key in money_columns or isinstance(value, (int, float)):
+                    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                if key == "total_salary":
+                    item.setForeground(QBrush(QColor("#0F766E")))
+                    item.setBackground(QBrush(QColor("#CCFBF1")))
+                table.setItem(row_index, column_index, item)
+        table.resizeColumnsToContents()
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.fit_table_columns(table, columns)
+        table.setSortingEnabled(bool(rows))
+
     def build_payroll_page(self, layout):
         toolbar = QFrame(objectName="payrollToolbar")
         toolbar_box = QVBoxLayout(toolbar)

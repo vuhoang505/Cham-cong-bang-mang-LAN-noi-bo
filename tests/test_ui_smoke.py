@@ -54,6 +54,8 @@ class DummyApi:
                 "items": [],
                 "pagination": {"page": 1, "pages": 1, "total": 0},
             }
+        if path == "/api/v1/me/payroll":
+            return {"year": kwargs["params"]["year"], "month": kwargs["params"].get("month"), "item": None}
         return []
 
 app = QApplication([])
@@ -77,6 +79,13 @@ user_api = DummyApi()
 window = MainWindow(user_api)
 assert window.page_names == EMPLOYEE_PAGES
 assert window.stack.count() == len(EMPLOYEE_PAGES)
+assert "Bảng lương của tôi" in window.page_names
+assert window.personal_payroll_year.property("payrollPeriodSelector") is True
+assert window.personal_payroll_month.property("payrollPeriodSelector") is True
+assert not window.personal_payroll_year.itemIcon(0).isNull()
+assert not window.personal_payroll_month.itemIcon(0).isNull()
+assert not window.personal_payroll_apply_button.icon().isNull()
+assert not window.personal_payroll_refresh_button.icon().isNull()
 assert "ip_addresses" in TABLE_COLUMNS["Client kết nối"]
 labels = {button.text() for button in window.findChildren(QPushButton)}
 assert any("CHECK-IN" in label for label in labels)
@@ -86,6 +95,24 @@ assert "Sao lưu" not in labels
 window.refresh_attendance_panel()
 mine_calls = [kwargs for _, path, kwargs in user_api.calls if path in ("/api/v1/attendance", "/api/v1/shift-assignments")]
 assert mine_calls and all(call["params"]["mine"] is True for call in mine_calls)
+history_table = next(
+    table
+    for table in window.findChildren(QTableWidget)
+    if table.property("page_name") == "Lịch sử"
+)
+window.load_table(history_table, window.endpoint_for("Lịch sử"))
+history_call = next(
+    kwargs
+    for _, path, kwargs in reversed(user_api.calls)
+    if path == "/api/v1/attendance"
+)
+assert history_call["params"]["mine"] is True
+window.load_personal_payroll()
+personal_payroll_calls = [
+    kwargs for _, path, kwargs in user_api.calls if path == "/api/v1/me/payroll"
+]
+assert personal_payroll_calls
+assert all("employee_id" not in call["params"] for call in personal_payroll_calls)
 today = local_today().isoformat()
 user_api.assignment_items = [{
     "shift_name": "Ca sáng",
